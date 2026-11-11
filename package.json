@@ -1,0 +1,35 @@
+{
+  "name": "tnb-tou-check",
+  "version": "0.1.0",
+  "description": "Offline CLI: would TNB ToU have been cheaper than General for my interval meter data? (Peninsular Malaysia, LV/MV/HV non-domestic)",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "tnb-tou-check": "dist/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist",
+    "data"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "check": "npm run lint && npm run typecheck && npm test",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9",
+    "@types/node": "^20",
+    "eslint": "^9",
+    "globals": "^16",
+    "typescript": "^5",
+    "typescript-eslint": "^8",
+    "vitest": "^3"
+  }
+}
