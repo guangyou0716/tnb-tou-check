@@ -5,6 +5,7 @@ import { parseArgs } from 'node:util';
 import { analyze, parseHolidays } from './analyze.js';
 import { parseCsv } from './csv.js';
 import { InputError } from './errors.js';
+import { scaleDecimal } from './decimal.js';
 import { loadMeterData, type TimestampMeans, type ValueKind } from './intervals.js';
 import { toCsv, toJson, toMarkdown, toText } from './report.js';
 import { DEFAULT_TARIFF_URL, loadTariffFile, VOLTAGE_CLASSES, type VoltageClass } from './tariff.js';
@@ -22,6 +23,8 @@ Options:
   --ts-col <name>           Timestamp column name (default "timestamp")
   --value-col <name>        Value column name (default "kwh" or "kw")
   --tariff <file>           Tariff JSON (default: bundled RP4 2025-07 file)
+  --shift-peak <percent>    What-if: move this share (0-100, up to 2 decimals) of peak kWh
+                            to off-peak and re-price ToU; peak MD falls by the same share
   --json                    JSON output
   --md                      Markdown output
   --csv                     CSV output, one row per month with every charge
@@ -72,6 +75,7 @@ export function run(argv: string[]): CliResult {
         'ts-col': { type: 'string' },
         'value-col': { type: 'string' },
         tariff: { type: 'string' },
+        'shift-peak': { type: 'string' },
         json: { type: 'boolean' },
         md: { type: 'boolean' },
         csv: { type: 'boolean' },
@@ -93,6 +97,17 @@ export function run(argv: string[]): CliResult {
     const timestamp = oneOf<TimestampMeans>(values.timestamp, ['start', 'end'], '--timestamp', 'start');
     const value = oneOf<ValueKind>(values.value, ['kwh', 'kw'], '--value', 'kwh');
 
+    let shiftBasisPoints: bigint | undefined;
+    if (values['shift-peak'] !== undefined) {
+      const text = values['shift-peak'].trim().replace(/%$/, '');
+      if (/\.\d{3,}$/.test(text)) {
+        throw new InputError('--shift-peak allows at most 2 decimal places.');
+      }
+      shiftBasisPoints = scaleDecimal(text, 2, '--shift-peak');
+      if (shiftBasisPoints > 10_000n) {
+        throw new InputError('--shift-peak must be between 0 and 100.');
+      }
+    }
     const tariff = loadTariffFile(values.tariff ?? DEFAULT_TARIFF_URL);
     let holidays = new Set<string>();
     if (values.holidays !== undefined) {
@@ -113,7 +128,7 @@ export function run(argv: string[]): CliResult {
       timestampColumn: values['ts-col'],
       valueColumn: values['value-col'],
     });
-    const analysis = analyze(data, tariff, voltageClass, holidays);
+    const analysis = analyze(data, tariff, voltageClass, holidays, { shiftBasisPoints });
     const format = formats[0] ?? 'text';
     const report = {
       text: toText,

@@ -1,4 +1,4 @@
-import type { Analysis, Charges, MonthResult } from './analyze.js';
+import type { Analysis, Charges, MonthResult, WhatIf } from './analyze.js';
 import { divRound, formatScaled } from './decimal.js';
 import { formatLocal } from './time.js';
 
@@ -19,6 +19,42 @@ export function rm(sen: bigint): string {
 
 function percent(value: number | null): string {
   return value === null ? '-' : `${(value * 100).toFixed(1)}%`;
+}
+
+/** Basis points to a percent string without trailing zeros, e.g. 2050n -> "20.5". */
+export function shiftPercent(basisPoints: bigint): string {
+  return formatScaled(basisPoints, 2).replace(/\.?0+$/, '');
+}
+
+export const WHAT_IF_ASSUMPTION =
+  'Each peak half-hour is cut by the same share, so peak MD falls by that share; the moved kWh is assumed to fit off-peak without raising anytime MD, so General is unchanged.';
+
+function whatIfLines(w: WhatIf, generalTotal: bigint): string[] {
+  return [
+    `What-if: move ${shiftPercent(w.shiftBasisPoints)}% of peak kWh to off-peak`,
+    `ToU RM ${rm(w.touTotal)} vs General RM ${rm(generalTotal)}; ToU - General = RM ${rm(w.delta)} (ToU cheaper in ${w.touCheaperMonths} of the compared months)`,
+    `What-if verdict: ${w.recommendation}`,
+    `Assumption: ${WHAT_IF_ASSUMPTION}`,
+  ];
+}
+
+function whatIfJson(w: WhatIf) {
+  return {
+    shiftPercent: shiftPercent(w.shiftBasisPoints),
+    months: w.months.map((m) => ({
+      month: m.month,
+      status: m.status,
+      shiftedKwh: kilo3(m.shiftedMWh),
+      peakMdKw: kilo3(m.peakMdMW),
+      touRm: chargesJson(m.tou),
+      deltaRm: rm(m.delta),
+    })),
+    touCheaperMonths: w.touCheaperMonths,
+    touRm: rm(w.touTotal),
+    deltaRm: rm(w.delta),
+    recommendation: w.recommendation,
+    assumption: WHAT_IF_ASSUMPTION,
+  };
 }
 
 function chargesJson(c: Charges) {
@@ -70,6 +106,7 @@ export function toJson(analysis: Analysis): string {
         worstMonth: summary.worstMonth,
         recommendation: summary.recommendation,
       },
+      ...(analysis.whatIf ? { whatIf: whatIfJson(analysis.whatIf) } : {}),
       warnings: analysis.warnings,
       disclaimer: DISCLAIMER,
     },
@@ -126,6 +163,9 @@ export function toText(analysis: Analysis): string {
     out.push(`Worst month for ToU: ${summary.worstMonth}`);
   }
   out.push(`Verdict: ${summary.recommendation}. ${VERDICT[summary.recommendation]}`);
+  if (analysis.whatIf) {
+    out.push('', ...whatIfLines(analysis.whatIf, summary.generalTotal));
+  }
   for (const warning of analysis.warnings) {
     out.push(`Warning: ${warning}`);
   }
@@ -177,12 +217,38 @@ export function toMarkdown(analysis: Analysis): string {
   if (summary.worstMonth !== null) {
     out.push(`- Worst month for ToU: ${summary.worstMonth}`);
   }
+  if (analysis.whatIf) {
+    const w = analysis.whatIf;
+    out.push(
+      '',
+      `## What-if: ${shiftPercent(w.shiftBasisPoints)}% of peak kWh moved to off-peak`,
+      '',
+      row(['Month', 'Shifted kWh', 'Peak MD kW', 'ToU RM', 'ToU - General RM', 'Status']),
+      row(['---', '---:', '---:', '---:', '---:', '---']),
+      ...w.months.map((m) =>
+        row([m.month, kilo3(m.shiftedMWh), kilo3(m.peakMdMW), rm(m.tou.total), rm(m.delta), m.status]),
+      ),
+      '',
+      `- ToU RM ${rm(w.touTotal)} vs General RM ${rm(summary.generalTotal)}; ToU - General = RM ${rm(w.delta)}`,
+      `- What-if verdict: **${w.recommendation}**`,
+      `- Assumption: ${WHAT_IF_ASSUMPTION}`,
+    );
+  }
   if (analysis.warnings.length > 0) {
     out.push('', '## Warnings', '', ...analysis.warnings.map((w) => `- ${w}`));
   }
   out.push('', `> ${DISCLAIMER}`, '');
   return out.join('\n');
 }
+
+/** Appended to CSV_COLUMNS only when a what-if shift was requested. */
+export const WHAT_IF_CSV_COLUMNS = [
+  'whatif_shift_percent',
+  'whatif_shifted_kwh',
+  'whatif_peak_md_kw',
+  'whatif_tou_total_rm',
+  'whatif_tou_minus_general_rm',
+] as const;
 
 export const CSV_COLUMNS = [
   'month',
@@ -215,8 +281,15 @@ function csvCell(value: string): string {
 /** One CSV row per month with every charge component (RM, kWh and kW as fixed decimals). */
 export function toCsv(analysis: Analysis): string {
   const charges = (c: Charges) => [rm(c.energy), rm(c.capacity), rm(c.network), rm(c.retail), rm(c.total)];
-  const lines = [CSV_COLUMNS.join(',')];
-  for (const m of analysis.months) {
+  const { whatIf } = analysis;
+  const header: string[] = [...CSV_COLUMNS, ...(whatIf ? WHAT_IF_CSV_COLUMNS : [])];
+  const lines = [header.join(',')];
+  analysis.months.forEach((m, index) => {
+    const w = whatIf?.months[index];
+    const extra =
+      whatIf && w
+        ? [shiftPercent(whatIf.shiftBasisPoints), kilo3(w.shiftedMWh), kilo3(w.peakMdMW), rm(w.tou.total), rm(w.delta)]
+        : [];
     lines.push(
       [
         m.month,
@@ -232,10 +305,11 @@ export function toCsv(analysis: Analysis): string {
         ...charges(m.general),
         ...charges(m.tou),
         rm(m.delta),
+        ...extra,
       ]
         .map(csvCell)
         .join(','),
     );
-  }
+  });
   return `${lines.join('\n')}\n`;
 }
