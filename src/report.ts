@@ -132,3 +132,110 @@ export function toText(analysis: Analysis): string {
   out.push('', DISCLAIMER, '');
   return out.join('\n');
 }
+
+/** Markdown report: the text report's content as headings, a table and bullet lists. */
+export function toMarkdown(analysis: Analysis): string {
+  const { summary, indicators } = analysis;
+  const header = ['Month', 'kWh', 'Peak %', 'MD kW', 'Peak MD kW', 'General RM', 'ToU RM', 'ToU - General RM', 'Status'];
+  const align = ['---', ...header.slice(1, -1).map(() => '---:'), '---'];
+  const rows = analysis.months.map((m) => [
+    m.month,
+    kilo3(m.totalMWh),
+    percent(m.totalMWh > 0n ? Number(m.peakMWh) / Number(m.totalMWh) : null),
+    kilo3(m.anytimeMdMW),
+    kilo3(m.peakMdMW),
+    rm(m.general.total),
+    rm(m.tou.total),
+    rm(m.delta),
+    m.status,
+  ]);
+  const row = (cells: string[]) => `| ${cells.join(' | ')} |`;
+  const out: string[] = [
+    '# TNB General vs ToU check',
+    '',
+    `Class ${analysis.voltageClass.toUpperCase()}, tariff \`${analysis.tariffId}\`, ${analysis.intervalMinutes}-minute data.`,
+    '',
+    `**Verdict: ${summary.recommendation}.** ${VERDICT[summary.recommendation]}`,
+    '',
+    '## Months',
+    '',
+    row(header),
+    row(align),
+    ...rows.map(row),
+    '',
+    '## Summary',
+    '',
+    `- Compared months: ${summary.monthsCompared} (ToU cheaper in ${summary.touCheaperMonths})`,
+    `- General RM ${rm(summary.generalTotal)} vs ToU RM ${rm(summary.touTotal)}; ToU - General = RM ${rm(summary.delta)}`,
+    `- Peak kWh share ${percent(summary.peakShare)} (energy break-even ${percent(indicators.energyBreakEvenPeakShare)})`,
+  ];
+  if (indicators.mdRatioThreshold !== null) {
+    out.push(
+      `- Peak MD / anytime MD ${percent(summary.mdRatio)} (ToU demand charges are lower below ${percent(indicators.mdRatioThreshold)})`,
+    );
+  }
+  if (summary.worstMonth !== null) {
+    out.push(`- Worst month for ToU: ${summary.worstMonth}`);
+  }
+  if (analysis.warnings.length > 0) {
+    out.push('', '## Warnings', '', ...analysis.warnings.map((w) => `- ${w}`));
+  }
+  out.push('', `> ${DISCLAIMER}`, '');
+  return out.join('\n');
+}
+
+export const CSV_COLUMNS = [
+  'month',
+  'status',
+  'intervals',
+  'expected_intervals',
+  'kwh',
+  'peak_kwh',
+  'anytime_md_kw',
+  'anytime_md_at',
+  'peak_md_kw',
+  'peak_md_at',
+  'general_energy_rm',
+  'general_capacity_rm',
+  'general_network_rm',
+  'general_retail_rm',
+  'general_total_rm',
+  'tou_energy_rm',
+  'tou_capacity_rm',
+  'tou_network_rm',
+  'tou_retail_rm',
+  'tou_total_rm',
+  'tou_minus_general_rm',
+] as const;
+
+function csvCell(value: string): string {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+/** One CSV row per month with every charge component (RM, kWh and kW as fixed decimals). */
+export function toCsv(analysis: Analysis): string {
+  const charges = (c: Charges) => [rm(c.energy), rm(c.capacity), rm(c.network), rm(c.retail), rm(c.total)];
+  const lines = [CSV_COLUMNS.join(',')];
+  for (const m of analysis.months) {
+    lines.push(
+      [
+        m.month,
+        m.status,
+        String(m.intervals),
+        String(m.expectedIntervals),
+        kilo3(m.totalMWh),
+        kilo3(m.peakMWh),
+        kilo3(m.anytimeMdMW),
+        m.anytimeMdAt === null ? '' : formatLocal(m.anytimeMdAt),
+        kilo3(m.peakMdMW),
+        m.peakMdAt === null ? '' : formatLocal(m.peakMdAt),
+        ...charges(m.general),
+        ...charges(m.tou),
+        rm(m.delta),
+      ]
+        .map(csvCell)
+        .join(','),
+    );
+  }
+  return `${lines.join('\n')}\n`;
+}

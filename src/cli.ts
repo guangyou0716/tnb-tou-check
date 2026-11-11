@@ -6,7 +6,7 @@ import { analyze, parseHolidays } from './analyze.js';
 import { parseCsv } from './csv.js';
 import { InputError } from './errors.js';
 import { loadMeterData, type TimestampMeans, type ValueKind } from './intervals.js';
-import { toJson, toText } from './report.js';
+import { toCsv, toJson, toMarkdown, toText } from './report.js';
 import { DEFAULT_TARIFF_URL, loadTariffFile, VOLTAGE_CLASSES, type VoltageClass } from './tariff.js';
 
 export const USAGE = `Usage: tnb-tou-check analyze <interval.csv> --class lv|mv|hv [options]
@@ -23,6 +23,8 @@ Options:
   --value-col <name>        Value column name (default "kwh" or "kw")
   --tariff <file>           Tariff JSON (default: bundled RP4 2025-07 file)
   --json                    JSON output
+  --md                      Markdown output
+  --csv                     CSV output, one row per month with every charge
   --out <file>              Write the report to a file instead of stdout
   -h, --help                Show this help
 
@@ -71,6 +73,8 @@ export function run(argv: string[]): CliResult {
         'value-col': { type: 'string' },
         tariff: { type: 'string' },
         json: { type: 'boolean' },
+        md: { type: 'boolean' },
+        csv: { type: 'boolean' },
         out: { type: 'string' },
         help: { type: 'boolean', short: 'h' },
       },
@@ -80,6 +84,10 @@ export function run(argv: string[]): CliResult {
     }
     if (positionals[0] !== 'analyze' || positionals.length !== 2) {
       throw new InputError('expected: analyze <interval.csv>');
+    }
+    const formats = (['json', 'md', 'csv'] as const).filter((f) => values[f]);
+    if (formats.length > 1) {
+      throw new InputError(`choose one output format, not ${formats.map((f) => `--${f}`).join(' and ')}.`);
     }
     const voltageClass = oneOf<VoltageClass>(values.class, VOLTAGE_CLASSES, '--class');
     const timestamp = oneOf<TimestampMeans>(values.timestamp, ['start', 'end'], '--timestamp', 'start');
@@ -106,7 +114,13 @@ export function run(argv: string[]): CliResult {
       valueColumn: values['value-col'],
     });
     const analysis = analyze(data, tariff, voltageClass, holidays);
-    const report = values.json ? toJson(analysis) : toText(analysis);
+    const format = formats[0] ?? 'text';
+    const report = {
+      text: toText,
+      json: toJson,
+      md: toMarkdown,
+      csv: toCsv,
+    }[format](analysis);
     if (values.out !== undefined) {
       writeFileSync(values.out, report);
       return { code: 0, stdout: '', stderr: '' };
