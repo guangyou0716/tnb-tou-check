@@ -26,6 +26,21 @@ describe('cli run()', () => {
     expect(json.months[0].anytimeMdKw).toBe('500.000');
   });
 
+  it('prints Markdown and CSV', () => {
+    const md = run(['analyze', fixture('mv-factory-b.csv'), '--class', 'mv', '--md']);
+    expect(md.code).toBe(0);
+    expect(md.stdout).toMatch(/^# TNB General vs ToU check/);
+    const csv = run(['analyze', fixture('mv-factory-b.csv'), '--class', 'mv', '--csv']);
+    expect(csv.code).toBe(0);
+    expect(csv.stdout.split('\n')[0]).toMatch(/^month,status,/);
+  });
+
+  it('refuses more than one output format', () => {
+    const result = run(['analyze', fixture('mv-factory-b.csv'), '--class', 'mv', '--json', '--csv']);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toMatch(/choose one output format/);
+  });
+
   it('writes to --out', () => {
     const out = join(tmp, 'report.json');
     const result = run(['analyze', fixture('lv-cold-room.csv'), '--class', 'lv', '--json', '--out', out]);

@@ -29,6 +29,14 @@ for (const [file, cls, generalRm, touRm, recommendation] of expected) {
   console.log(`smoke: ok ${file} General RM${s.generalRm} ToU RM${s.touRm} -> ${s.recommendation}`);
 }
 
+for (const [flag, marker] of [['--md', '# TNB General vs ToU check'], ['--csv', 'month,status,']]) {
+  const out = execFileSync(process.execPath, [cli, 'analyze', fixture('mv-factory-b.csv'), '--class', 'mv', flag], { encoding: 'utf8' });
+  if (!out.startsWith(marker) || !out.includes('82016.25')) {
+    fail(`${flag} output: ${JSON.stringify(out.slice(0, 120))}`);
+  }
+  console.log(`smoke: ok ${flag}`);
+}
+
 const link = join(mkdtempSync(join(tmpdir(), 'tnb-smoke-')), 'tnb-tou-check');
 symlinkSync(cli, link);
 const viaLink = spawnSync(process.execPath, [link, 'analyze', fixture('mv-factory-b.csv'), '--class', 'mv'], { encoding: 'utf8' });

@@ -54,7 +54,11 @@ Options:
 | `--ts-col NAME`, `--value-col NAME` | Column names (default `timestamp` and `kwh` / `kw`, case-insensitive). |
 | `--tariff FILE` | Use a different tariff JSON (same schema as `data/tariffs/`). |
 | `--json` | Machine-readable output (RM amounts as strings). |
+| `--md` | Markdown report (verdict, month table, summary, warnings, disclaimer) for sharing or pasting into a document. |
+| `--csv` | One row per month with every charge component for General and ToU, for spreadsheets. |
 | `--out FILE` | Write the report to a file. |
+
+Use at most one of `--json`, `--md` and `--csv`; the default is a plain-text report.
 
 Exit codes: `0` success, `2` bad input (with a message and usage on stderr).
 

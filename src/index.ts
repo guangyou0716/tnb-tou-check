@@ -4,6 +4,6 @@ export { parseCsv } from './csv.js';
 export { InputError } from './errors.js';
 export { loadMeterData } from './intervals.js';
 export type { LoadOptions, MeterData } from './intervals.js';
-export { toJson, toText } from './report.js';
+export { toCsv, toJson, toMarkdown, toText } from './report.js';
 export { loadTariffFile, parseTariff } from './tariff.js';
 export type { Tariff, VoltageClass } from './tariff.js';
