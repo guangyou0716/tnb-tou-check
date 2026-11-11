@@ -67,7 +67,45 @@ export interface Analysis {
     worstMonth: string | null;
     recommendation: Recommendation;
   };
+  /** Present when a what-if peak shift was requested. */
+  whatIf?: WhatIf;
   warnings: string[];
+}
+
+/** Basis points per 100%. */
+export const SHIFT_SCALE = 10_000n;
+
+export interface WhatIfMonth {
+  month: string;
+  status: MonthResult['status'];
+  /** Peak energy moved to off-peak, in mWh. */
+  shiftedMWh: bigint;
+  /** Peak MD after the shift, in mW. Anytime MD is assumed unchanged. */
+  peakMdMW: bigint;
+  tou: Charges;
+  /** tou.total - general.total (General is unchanged by a shift), in sen. */
+  delta: bigint;
+}
+
+/**
+ * "What if this share of peak-period energy moved to off-peak?" Every peak half-hour is scaled down
+ * by the same share, so peak MD falls by that share too. General bills do not change (same kWh,
+ * anytime MD assumed unchanged because the moved load is assumed to fit under the existing MD).
+ */
+export interface WhatIf {
+  /** Share of peak kWh moved, in basis points (10000 = 100%). */
+  shiftBasisPoints: bigint;
+  months: WhatIfMonth[];
+  touCheaperMonths: number;
+  touTotal: bigint;
+  /** touTotal - summary.generalTotal over compared months, in sen. */
+  delta: bigint;
+  recommendation: Recommendation;
+}
+
+export interface AnalyzeOptions {
+  /** Share of peak kWh to move to off-peak for the what-if, in basis points (0..10000). */
+  shiftBasisPoints?: bigint;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -186,11 +224,69 @@ interface MonthAccumulator {
   peakMdAt: number | null;
 }
 
+function recommend(monthsCompared: number, generalTotal: bigint, delta: bigint): Recommendation {
+  if (monthsCompared === 0) {
+    return 'insufficient-data';
+  }
+  const magnitude = delta < 0n ? -delta : delta;
+  if (magnitude * 100n <= generalTotal * BigInt(BORDERLINE_PERCENT)) {
+    return 'borderline';
+  }
+  return delta < 0n ? 'switch' : 'stay';
+}
+
+/** Applies a peak-to-off-peak shift (basis points) to one month's usage. Rounds to the mWh / mW. */
+export function shiftUsage(usage: MonthUsage, shiftBasisPoints: bigint): MonthUsage {
+  if (shiftBasisPoints < 0n || shiftBasisPoints > SHIFT_SCALE) {
+    throw new RangeError('shift must be between 0 and 10000 basis points');
+  }
+  const keep = SHIFT_SCALE - shiftBasisPoints;
+  return {
+    totalMWh: usage.totalMWh,
+    peakMWh: divRound(usage.peakMWh * keep, SHIFT_SCALE),
+    anytimeMdMW: usage.anytimeMdMW,
+    peakMdMW: divRound(usage.peakMdMW * keep, SHIFT_SCALE),
+  };
+}
+
+function whatIfFor(
+  tariff: Tariff,
+  voltageClass: VoltageClass,
+  months: MonthResult[],
+  generalTotal: bigint,
+  shiftBasisPoints: bigint,
+): WhatIf {
+  const shifted: WhatIfMonth[] = months.map((m) => {
+    const usage = shiftUsage(m, shiftBasisPoints);
+    const { tou } = priceMonth(tariff, voltageClass, usage);
+    return {
+      month: m.month,
+      status: m.status,
+      shiftedMWh: m.peakMWh - usage.peakMWh,
+      peakMdMW: usage.peakMdMW,
+      tou,
+      delta: tou.total - m.general.total,
+    };
+  });
+  const compared = shifted.filter((m) => m.status === 'complete');
+  const touTotal = compared.reduce((sum, m) => sum + m.tou.total, 0n);
+  const delta = touTotal - generalTotal;
+  return {
+    shiftBasisPoints,
+    months: shifted,
+    touCheaperMonths: compared.filter((m) => m.delta < 0n).length,
+    touTotal,
+    delta,
+    recommendation: recommend(compared.length, generalTotal, delta),
+  };
+}
+
 export function analyze(
   data: MeterData,
   tariff: Tariff,
   voltageClass: VoltageClass,
   holidays: ReadonlySet<string> = new Set(),
+  options: AnalyzeOptions = {},
 ): Analysis {
   const months = new Map<string, MonthAccumulator>();
   const monthOf = (month: string): MonthAccumulator => {
@@ -276,17 +372,7 @@ export function analyze(
     }
   }
   const delta = touTotal - generalTotal;
-  let recommendation: Recommendation;
-  if (compared.length === 0) {
-    recommendation = 'insufficient-data';
-  } else {
-    const magnitude = delta < 0n ? -delta : delta;
-    if (magnitude * 100n <= generalTotal * BigInt(BORDERLINE_PERCENT)) {
-      recommendation = 'borderline';
-    } else {
-      recommendation = delta < 0n ? 'switch' : 'stay';
-    }
-  }
+  const recommendation = recommend(compared.length, generalTotal, delta);
 
   const warnings: string[] = [];
   const incomplete = results.filter((r) => r.status === 'incomplete').map((r) => r.month);
@@ -321,6 +407,11 @@ export function analyze(
       worstMonth: worst?.month ?? null,
       recommendation,
     },
+    ...(options.shiftBasisPoints === undefined
+      ? {}
+      : {
+          whatIf: whatIfFor(tariff, voltageClass, results, generalTotal, options.shiftBasisPoints),
+        }),
     warnings,
   };
 }

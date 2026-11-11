@@ -37,6 +37,16 @@ for (const [flag, marker] of [['--md', '# TNB General vs ToU check'], ['--csv', 
   console.log(`smoke: ok ${flag}`);
 }
 
+{
+  const json = JSON.parse(
+    execFileSync(process.execPath, [cli, 'analyze', fixture('mv-factory-a.csv'), '--class', 'mv', '--json', '--shift-peak', '20'], { encoding: 'utf8' }),
+  );
+  if (json.summary.recommendation !== 'stay' || json.whatIf?.touRm !== '82077.60' || json.whatIf?.recommendation !== 'switch') {
+    fail(`--shift-peak 20: got ${JSON.stringify(json.whatIf)}`);
+  }
+  console.log('smoke: ok --shift-peak 20 (factory A: stay -> what-if ToU RM82077.60, switch)');
+}
+
 const link = join(mkdtempSync(join(tmpdir(), 'tnb-smoke-')), 'tnb-tou-check');
 symlinkSync(cli, link);
 const viaLink = spawnSync(process.execPath, [link, 'analyze', fixture('mv-factory-b.csv'), '--class', 'mv'], { encoding: 'utf8' });

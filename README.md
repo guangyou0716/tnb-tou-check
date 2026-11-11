@@ -53,6 +53,7 @@ Options:
 | `--value kwh\|kw` | Energy per interval (default) or average kW over the interval. |
 | `--ts-col NAME`, `--value-col NAME` | Column names (default `timestamp` and `kwh` / `kw`, case-insensitive). |
 | `--tariff FILE` | Use a different tariff JSON (same schema as `data/tariffs/`). |
+| `--shift-peak PERCENT` | What-if: move this share (0 to 100, up to 2 decimals) of peak-period kWh to off-peak and re-price ToU. See [What-if load shift](#what-if-load-shift). |
 | `--json` | Machine-readable output (RM amounts as strings). |
 | `--md` | Markdown report (verdict, month table, summary, warnings, disclaimer) for sharing or pasting into a document. |
 | `--csv` | One row per month with every charge component for General and ToU, for spreadsheets. |
@@ -87,6 +88,29 @@ Month           kWh  Peak %    MD kW  Peak MD kW  General RM    ToU RM  ToU-Gen 
 ...
 Verdict: switch. ToU would have been cheaper: consider switching.
 ```
+
+## What-if load shift
+
+`--shift-peak 20` asks: "what if I moved 20% of my peak-period kWh (14:00 to 22:00 on weekdays that are not listed holidays) to
+off-peak?" Every peak half-hour is cut by the same share, so peak MD falls by that share too. The
+moved kWh is assumed to fit into off-peak hours without raising the anytime MD, so the General bill
+does not change. The report adds a what-if section (text and Markdown), a `whatIf` object (JSON) or
+extra `whatif_*` columns (CSV); the main verdict is unchanged.
+
+For `fixtures/mv-factory-a.csv` (verdict `stay`, ToU RM92,335.75 vs General RM89,580.00), a 20% shift
+moves 13,500 kWh and lowers peak MD from 500 kW to 400 kW:
+
+```text
+$ node dist/cli.js analyze fixtures/mv-factory-a.csv --class mv --shift-peak 20
+...
+What-if: move 20% of peak kWh to off-peak
+ToU RM 82077.60 vs General RM 89580.00; ToU - General = RM -7502.40 (ToU cheaper in 1 of the compared months)
+What-if verdict: switch
+```
+
+That is 13,500 kWh x (31.32 - 27.23) sen = RM552.15 of energy plus 100 kW x RM(30.19 + 66.87) =
+RM9,706.00 of demand charges. Real load is rarely this flexible: treat the result as an upper bound
+for the shift you can actually make.
 
 ## Tariff data
 
