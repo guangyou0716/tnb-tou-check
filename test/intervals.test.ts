@@ -1,0 +1,75 @@
+import { describe, expect, it } from 'vitest';
+import { parseCsv } from '../src/csv.js';
+import { InputError } from '../src/errors.js';
+import { loadMeterData } from '../src/intervals.js';
+import { parseTimestamp } from '../src/time.js';
+import { FIXTURES } from '../scripts/gen-fixtures.mjs';
+import { csvOf } from './helpers.js';
+
+const load = (csv: string, options = {}) => loadMeterData(parseCsv(csv), options);
+
+describe('loadMeterData', () => {
+  it('detects 30-minute data and keys blocks by start', () => {
+    const data = load(csvOf([['2025-09-01 00:00', '1'], ['2025-09-01 00:30', '2.5'], ['2025-09-01 01:00', '0']]));
+    expect(data.intervalMinutes).toBe(30);
+    expect(data.intervalCount).toBe(3);
+    expect(data.blocks.get(parseTimestamp('2025-09-01 00:30'))).toBe(2_500_000n);
+  });
+
+  it('aggregates 15-minute data into the same 30-minute blocks', () => {
+    const data = load(
+      csvOf([['2025-09-01 00:00', '1'], ['2025-09-01 00:15', '2'], ['2025-09-01 00:30', '3'], ['2025-09-01 00:45', '4']]),
+    );
+    expect(data.intervalMinutes).toBe(15);
+    expect([...data.blocks.values()]).toEqual([3_000_000n, 7_000_000n]);
+  });
+
+  it('gives identical blocks for the 15- and 30-minute versions of a fixture', () => {
+    const thirty = load(FIXTURES['mv-factory-b.csv']());
+    const fifteen = load(FIXTURES['mv-factory-b-15min.csv']());
+    expect(fifteen.intervalMinutes).toBe(15);
+    expect(fifteen.blocks).toEqual(thirty.blocks);
+  });
+
+  it('shifts interval-end timestamps back by one interval', () => {
+    const data = load(csvOf([['2025-09-01 14:00', '1'], ['2025-09-01 14:30', '2']]), { timestamp: 'end' });
+    expect(data.firstStart).toBe(parseTimestamp('2025-09-01 13:30'));
+    expect(data.blocks.get(parseTimestamp('2025-09-01 13:30'))).toBe(1_000_000n);
+  });
+
+  it('converts average kW to energy per interval', () => {
+    const data = load(csvOf([['2025-09-01 00:00', '100'], ['2025-09-01 00:15', '50']], 'timestamp,kw'), {
+      value: 'kw',
+    });
+    // 100 kW x 15 min = 25 kWh; 50 kW x 15 min = 12.5 kWh; same 30-minute block.
+    expect(data.blocks.get(parseTimestamp('2025-09-01 00:00'))).toBe(37_500_000n);
+  });
+
+  it('matches custom column names case-insensitively', () => {
+    const data = load(csvOf([['2025-09-01 00:00', '1'], ['2025-09-01 00:30', '1']], 'Read_Time,Energy'), {
+      timestampColumn: 'read_time',
+      valueColumn: 'ENERGY',
+    });
+    expect(data.intervalCount).toBe(2);
+  });
+
+  it('accepts unsorted rows', () => {
+    const data = load(csvOf([['2025-09-01 00:30', '2'], ['2025-09-01 00:00', '1']]));
+    expect(data.firstStart).toBe(parseTimestamp('2025-09-01 00:00'));
+  });
+
+  it.each([
+    ['duplicate timestamps', csvOf([['2025-09-01 00:00', '1'], ['2025-09-01T00:00+08:00', '1'], ['2025-09-01 00:30', '1']]), /duplicate/],
+    ['20-minute data', csvOf([['2025-09-01 00:00', '1'], ['2025-09-01 00:20', '1'], ['2025-09-01 00:40', '1']]), /20 minutes/],
+    ['hourly data', csvOf([['2025-09-01 00:00', '1'], ['2025-09-01 01:00', '1']]), /60 minutes/],
+    ['off-grid 30-minute data', csvOf([['2025-09-01 00:10', '1'], ['2025-09-01 00:40', '1']]), /grid/],
+    ['a negative value', csvOf([['2025-09-01 00:00', '-1'], ['2025-09-01 00:30', '1']]), /row 2/],
+    ['a bad timestamp', csvOf([['2025-09-01 00:00', '1'], ['yesterday', '1']]), /row 3/],
+    ['a missing column', 'timestamp,kwh\n2025-09-01 00:00,1\n2025-09-01 00:30', /missing/],
+    ['no data rows', 'timestamp,kwh\n2025-09-01 00:00,1', /at least two/],
+    ['no kwh column', csvOf([['2025-09-01 00:00', '1'], ['2025-09-01 00:30', '1']], 'timestamp,kw'), /no "kwh" column/],
+  ])('rejects %s', (_name, csv, message) => {
+    expect(() => load(csv)).toThrow(InputError);
+    expect(() => load(csv)).toThrow(message);
+  });
+});

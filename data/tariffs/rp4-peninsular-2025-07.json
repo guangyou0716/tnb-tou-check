@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "id": "rp4-peninsular-2025-07",
+  "name": "TNB Peninsular Malaysia non-domestic tariffs (RP4), Suruhanjaya Tenaga 'Jadual Tarif Elektrik di Semenanjung'",
+  "validFrom": "2025-07-01",
+  "validTo": "2027-12-31",
+  "checked": "2026-11-12 against the ST PDF (Bukan Domestik Voltan Rendah / Sederhana / Tinggi, Am and ToU)",
+  "classes": {
+    "lv": {
+      "general": {
+        "energy": {
+          "rate": "27.03",
+          "unit": "sen/kWh",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "capacity": {
+          "rate": "8.83",
+          "unit": "sen/kWh",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "network": {
+          "rate": "14.82",
+          "unit": "sen/kWh",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "retail": {
+          "rate": "20.00",
+          "unit": "RM/month",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        }
+      },
+      "tou": {
+        "energyPeak": {
+          "rate": "28.52",
+          "unit": "sen/kWh",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "energyOffPeak": {
+          "rate": "24.43",
+          "unit": "sen/kWh",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "capacity": {
+          "rate": "8.83",
+          "unit": "sen/kWh",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "network": {
+          "rate": "14.82",
+          "unit": "sen/kWh",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "retail": {
+          "rate": "20.00",
+          "unit": "RM/month",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        }
+      }
+    },
+    "mv": {
+      "general": {
+        "energy": {
+          "rate": "29.83",
+          "unit": "sen/kWh",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "capacity": {
+          "rate": "29.43",
+          "unit": "RM/kW",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "network": {
+          "rate": "59.84",
+          "unit": "RM/kW",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "retail": {
+          "rate": "200.00",
+          "unit": "RM/month",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        }
+      },
+      "tou": {
+        "energyPeak": {
+          "rate": "31.32",
+          "unit": "sen/kWh",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "energyOffPeak": {
+          "rate": "27.23",
+          "unit": "sen/kWh",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "capacity": {
+          "rate": "30.19",
+          "unit": "RM/kW",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "network": {
+          "rate": "66.87",
+          "unit": "RM/kW",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "retail": {
+          "rate": "200.00",
+          "unit": "RM/month",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        }
+      }
+    },
+    "hv": {
+      "general": {
+        "energy": {
+          "rate": "43.03",
+          "unit": "sen/kWh",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "capacity": {
+          "rate": "16.68",
+          "unit": "RM/kW",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "network": {
+          "rate": "14.53",
+          "unit": "RM/kW",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "retail": {
+          "rate": "250.00",
+          "unit": "RM/month",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        }
+      },
+      "tou": {
+        "energyPeak": {
+          "rate": "44.52",
+          "unit": "sen/kWh",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "energyOffPeak": {
+          "rate": "40.43",
+          "unit": "sen/kWh",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "capacity": {
+          "rate": "21.76",
+          "unit": "RM/kW",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "network": {
+          "rate": "23.06",
+          "unit": "RM/kW",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        },
+        "retail": {
+          "rate": "250.00",
+          "unit": "RM/month",
+          "source": "https://myenergystats.st.gov.my/documents/d/guest/jadual-tarif-tnb-terkini"
+        }
+      }
+    }
+  }
+}
