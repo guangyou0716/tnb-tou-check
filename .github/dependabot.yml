@@ -1,0 +1,26 @@
+# Weekly update PRs. Nothing merges automatically; each PR goes through CI and review.
+# Major versions are ignored: a major upgrade (Node types, ESLint, Vitest, TypeScript, actions) is a
+# deliberate, separately planned change. Minor and patch bumps arrive as one grouped PR per ecosystem.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+    groups:
+      npm-minor-patch:
+        update-types: ['minor', 'patch']
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+    groups:
+      actions-minor-patch:
+        update-types: ['minor', 'patch']
