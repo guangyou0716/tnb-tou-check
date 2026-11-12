@@ -6,14 +6,16 @@ import { analyze, parseHolidays } from './analyze.js';
 import { parseCsv } from './csv.js';
 import { InputError } from './errors.js';
 import { scaleDecimal } from './decimal.js';
-import { loadMeterData, type TimestampMeans, type ValueKind } from './intervals.js';
+import { loadMeterDataFiles, type TimestampMeans, type ValueKind } from './intervals.js';
 import { toCsv, toJson, toMarkdown, toText } from './report.js';
 import { DEFAULT_TARIFF_URL, loadTariffFile, VOLTAGE_CLASSES, type VoltageClass } from './tariff.js';
 
-export const USAGE = `Usage: tnb-tou-check analyze <interval.csv> --class lv|mv|hv [options]
+export const USAGE = `Usage: tnb-tou-check analyze <interval.csv>... --class lv|mv|hv [options]
 
 Compares TNB General and ToU (Peninsular Malaysia, non-domestic) month by month
-from 15- or 30-minute interval data. Works offline.
+from 15- or 30-minute interval data. Works offline. Give several CSV files (for
+example one export per month, same columns) to analyse them as one series; a
+timestamp found in two files is an error.
 
 Options:
   --class lv|mv|hv          Voltage class (required)
@@ -39,6 +41,18 @@ function readText(path: string, what: string): string {
     return readFileSync(path, 'utf8');
   } catch (error) {
     throw new InputError(`cannot read ${what} "${path}" (${(error as NodeJS.ErrnoException).code ?? 'error'}).`);
+  }
+}
+
+function parseCsvFile(path: string, named: boolean): string[][] {
+  const text = readText(path, 'CSV file');
+  try {
+    return parseCsv(text);
+  } catch (error) {
+    if (named && error instanceof InputError) {
+      throw new InputError(`${path}: ${error.message}`);
+    }
+    throw error;
   }
 }
 
@@ -86,9 +100,10 @@ export function run(argv: string[]): CliResult {
     if (values.help) {
       return { code: 0, stdout: USAGE, stderr: '' };
     }
-    if (positionals[0] !== 'analyze' || positionals.length !== 2) {
-      throw new InputError('expected: analyze <interval.csv>');
+    if (positionals[0] !== 'analyze' || positionals.length < 2) {
+      throw new InputError('expected: analyze <interval.csv>...');
     }
+    const files = positionals.slice(1);
     const formats = (['json', 'md', 'csv'] as const).filter((f) => values[f]);
     if (formats.length > 1) {
       throw new InputError(`choose one output format, not ${formats.map((f) => `--${f}`).join(' and ')}.`);
@@ -122,7 +137,11 @@ export function run(argv: string[]): CliResult {
       }
       holidays = parseHolidays(json);
     }
-    const data = loadMeterData(parseCsv(readText(positionals[1], 'CSV file')), {
+    const sources = files.map((file) => ({
+      name: files.length > 1 ? file : undefined,
+      rows: parseCsvFile(file, files.length > 1),
+    }));
+    const data = loadMeterDataFiles(sources, {
       timestamp,
       value,
       timestampColumn: values['ts-col'],

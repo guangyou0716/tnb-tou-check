@@ -93,3 +93,34 @@ describe('fixtures', () => {
     }
   });
 });
+
+describe('cli run() with several CSV files', () => {
+  const whole = readFileSync(fixture('mv-factory-b.csv'), 'utf8').trimEnd().split('\n');
+  const mid = Math.floor(whole.length / 2);
+  const first = join(tmp, 'part-1.csv');
+  const second = join(tmp, 'part-2.csv');
+  writeFileSync(first, whole.slice(0, mid).join('\n') + '\n');
+  writeFileSync(second, [whole[0], ...whole.slice(mid)].join('\n') + '\n');
+
+  it('analyses split exports as one series', () => {
+    const one = run(['analyze', fixture('mv-factory-b.csv'), '--class', 'mv', '--json']);
+    const two = run(['analyze', second, first, '--class', 'mv', '--json']);
+    expect(two.code).toBe(0);
+    expect(JSON.parse(two.stdout)).toEqual(JSON.parse(one.stdout));
+  });
+
+  it('exits 2 when two files share a timestamp', () => {
+    const result = run(['analyze', first, first, '--class', 'mv']);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toMatch(/duplicate timestamp/);
+    expect(result.stderr).toContain('part-1.csv row 2 and');
+  });
+
+  it('names the file with a CSV syntax error', () => {
+    const broken = join(tmp, 'broken.csv');
+    writeFileSync(broken, 'timestamp,kwh\n"2025-09-30 23:30,1\n');
+    const result = run(['analyze', first, broken, '--class', 'mv']);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain(`${broken}: CSV: a quoted field is not closed.`);
+  });
+});

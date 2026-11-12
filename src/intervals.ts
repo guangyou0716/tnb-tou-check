@@ -32,12 +32,31 @@ export interface MeterData {
 
 export const SUPPORTED_INTERVALS = [15, 30] as const;
 
-/** Turns parsed CSV rows (header first) into validated 30-minute demand blocks. */
-export function loadMeterData(rows: string[][], options: LoadOptions = {}): MeterData {
+/** One parsed CSV file. `name` labels error messages when several files are combined. */
+export interface CsvSource {
+  name?: string;
+  rows: string[][];
+}
+
+interface Reading {
+  ts: number;
+  raw: bigint;
+  /** Human label such as `row 5` or `june.csv row 5`. */
+  where: string;
+  tsText: string;
+}
+
+function readRows(source: CsvSource, options: LoadOptions, minRows: number): Reading[] {
   const valueKind = options.value ?? 'kwh';
-  const timestampMeans = options.timestamp ?? 'start';
-  if (rows.length < 3) {
-    throw new InputError('CSV needs a header row and at least two data rows.');
+  const { rows } = source;
+  const prefix = source.name === undefined ? 'CSV' : `${source.name}:`;
+  const label = (rowNo: number) => (source.name === undefined ? `row ${rowNo}` : `${source.name} row ${rowNo}`);
+  if (rows.length < minRows) {
+    throw new InputError(
+      minRows >= 3
+        ? `${prefix} needs a header row and at least two data rows.`
+        : `${prefix} needs a header row and at least one data row.`,
+    );
   }
   const header = rows[0].map((h) => h.trim().toLowerCase());
   const tsName = (options.timestampColumn ?? 'timestamp').toLowerCase();
@@ -45,20 +64,20 @@ export function loadMeterData(rows: string[][], options: LoadOptions = {}): Mete
   const tsIndex = header.indexOf(tsName);
   const valueIndex = header.indexOf(valueName);
   if (tsIndex < 0) {
-    throw new InputError(`CSV has no "${tsName}" column (columns: ${header.join(', ')}).`);
+    throw new InputError(`${prefix} has no "${tsName}" column (columns: ${header.join(', ')}).`);
   }
   if (valueIndex < 0) {
-    throw new InputError(`CSV has no "${valueName}" column (columns: ${header.join(', ')}).`);
+    throw new InputError(`${prefix} has no "${valueName}" column (columns: ${header.join(', ')}).`);
   }
 
-  const readings: { ts: number; raw: bigint; row: number }[] = [];
+  const readings: Reading[] = [];
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r];
     const rowNo = r + 1;
     const tsText = row[tsIndex];
     const valueText = row[valueIndex];
     if (tsText === undefined || valueText === undefined) {
-      throw new InputError(`CSV row ${rowNo}: missing columns.`);
+      throw new InputError(`CSV ${label(rowNo)}: missing columns.`);
     }
     let ts: number;
     let raw: bigint;
@@ -68,20 +87,49 @@ export function loadMeterData(rows: string[][], options: LoadOptions = {}): Mete
       raw = scaleDecimal(valueText, 6, valueKind === 'kwh' ? 'kWh' : 'kW');
     } catch (error) {
       if (error instanceof InputError) {
-        throw new InputError(`CSV row ${rowNo}: ${error.message}`);
+        throw new InputError(`CSV ${label(rowNo)}: ${error.message}`);
       }
       throw error;
     }
-    readings.push({ ts, raw, row: rowNo });
+    readings.push({ ts, raw, where: label(rowNo), tsText });
   }
+  return readings;
+}
 
+/** Turns parsed CSV rows (header first) into validated 30-minute demand blocks. */
+export function loadMeterData(rows: string[][], options: LoadOptions = {}): MeterData {
+  return buildMeterData(readRows({ rows }, options, 3), options);
+}
+
+/**
+ * Combines several CSV files (for example one export per month) into one series. Every file
+ * needs a header and at least one data row; the same column options apply to all files.
+ * A timestamp that appears in two files is rejected like any other duplicate.
+ */
+export function loadMeterDataFiles(sources: CsvSource[], options: LoadOptions = {}): MeterData {
+  if (sources.length === 0) {
+    throw new InputError('no CSV files given.');
+  }
+  if (sources.length === 1) {
+    return buildMeterData(readRows(sources[0], options, 3), options);
+  }
+  const readings = sources.flatMap((source) => readRows(source, options, 2));
+  if (readings.length < 2) {
+    throw new InputError('CSV files need at least two data rows in total.');
+  }
+  return buildMeterData(readings, options);
+}
+
+function buildMeterData(readings: Reading[], options: LoadOptions): MeterData {
+  const valueKind = options.value ?? 'kwh';
+  const timestampMeans = options.timestamp ?? 'start';
   readings.sort((a, b) => a.ts - b.ts);
   let interval = Number.POSITIVE_INFINITY;
   for (let i = 1; i < readings.length; i++) {
     const diff = readings[i].ts - readings[i - 1].ts;
     if (diff === 0) {
       throw new InputError(
-        `duplicate timestamp "${rows[readings[i].row - 1][tsIndex]}" (rows ${readings[i - 1].row} and ${readings[i].row}).`,
+        `duplicate timestamp "${readings[i].tsText}" (${readings[i - 1].where} and ${readings[i].where}).`,
       );
     }
     interval = Math.min(interval, diff);
@@ -100,7 +148,7 @@ export function loadMeterData(rows: string[][], options: LoadOptions = {}): Mete
     const start = reading.ts - shift;
     if (((start % minutes) + minutes) % minutes !== 0) {
       throw new InputError(
-        `CSV row ${reading.row}: interval start is not on the ${minutes}-minute grid.`,
+        `CSV ${reading.where}: interval start is not on the ${minutes}-minute grid.`,
       );
     }
     const mWh =
