@@ -41,7 +41,11 @@ Requires Node.js 20 or later. No runtime dependencies.
 npm ci
 npm run build
 node dist/cli.js analyze my-meter.csv --class mv
+# several exports (for example one per month, same columns) as one series:
+node dist/cli.js analyze 2025-08.csv 2025-09.csv --class mv
 ```
+
+When you pass several CSV files, every file needs the same timestamp and value columns and at least one data row; readings are merged and sorted, and a timestamp that appears in two files is an input error that names both files and rows.
 
 Options:
 

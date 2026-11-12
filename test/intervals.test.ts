@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseCsv } from '../src/csv.js';
 import { InputError } from '../src/errors.js';
-import { loadMeterData } from '../src/intervals.js';
+import { loadMeterData, loadMeterDataFiles } from '../src/intervals.js';
 import { parseTimestamp } from '../src/time.js';
 import { FIXTURES } from '../scripts/gen-fixtures.mjs';
 import { csvOf } from './helpers.js';
@@ -71,5 +71,71 @@ describe('loadMeterData', () => {
   ])('rejects %s', (_name, csv, message) => {
     expect(() => load(csv)).toThrow(InputError);
     expect(() => load(csv)).toThrow(message);
+  });
+});
+
+describe('loadMeterDataFiles', () => {
+  const split = (csv: string): [string, string] => {
+    const lines = csv.trimEnd().split('\n');
+    const mid = Math.floor(lines.length / 2);
+    return [lines.slice(0, mid).join('\n'), [lines[0], ...lines.slice(mid)].join('\n')];
+  };
+
+  it('gives the same series as one file when the export is split in two', () => {
+    const whole = FIXTURES['mv-factory-b.csv']();
+    const [first, second] = split(whole);
+    const combined = loadMeterDataFiles([
+      { name: 'b.csv', rows: parseCsv(second) },
+      { name: 'a.csv', rows: parseCsv(first) },
+    ]);
+    expect(combined).toEqual(load(whole));
+  });
+
+  it('accepts files with a single data row when several are combined', () => {
+    const data = loadMeterDataFiles([
+      { name: 'a.csv', rows: parseCsv(csvOf([['2025-09-01 00:00', '1']])) },
+      { name: 'b.csv', rows: parseCsv(csvOf([['2025-09-01 00:30', '2']])) },
+    ]);
+    expect(data.intervalCount).toBe(2);
+    expect(data.intervalMinutes).toBe(30);
+  });
+
+  it('names both files for a timestamp found in two files', () => {
+    const run = () =>
+      loadMeterDataFiles([
+        { name: 'aug.csv', rows: parseCsv(csvOf([['2025-09-01 00:00', '1'], ['2025-09-01 00:30', '1']])) },
+        { name: 'sep.csv', rows: parseCsv(csvOf([['2025-09-01 00:30', '1'], ['2025-09-01 01:00', '1']])) },
+      ]);
+    expect(run).toThrow(InputError);
+    expect(run).toThrow(/duplicate timestamp "2025-09-01 00:30" \(aug\.csv row 3 and sep\.csv row 2\)/);
+  });
+
+  it('prefixes per-file errors with the file name', () => {
+    const good = parseCsv(csvOf([['2025-09-01 00:00', '1']]));
+    expect(() =>
+      loadMeterDataFiles([
+        { name: 'a.csv', rows: good },
+        { name: 'b.csv', rows: parseCsv(csvOf([['yesterday', '1']])) },
+      ]),
+    ).toThrow(/CSV b\.csv row 2:/);
+    expect(() =>
+      loadMeterDataFiles([
+        { name: 'a.csv', rows: good },
+        { name: 'b.csv', rows: parseCsv('time,kwh\n2025-09-01 00:30,1\n') },
+      ]),
+    ).toThrow(/b\.csv: has no "timestamp" column/);
+    expect(() =>
+      loadMeterDataFiles([
+        { name: 'a.csv', rows: good },
+        { name: 'b.csv', rows: [['timestamp', 'kwh']] },
+      ]),
+    ).toThrow(/b\.csv: needs a header row and at least one data row/);
+  });
+
+  it('keeps the single-file rules for one source and rejects none', () => {
+    expect(() => loadMeterDataFiles([{ rows: parseCsv(csvOf([['2025-09-01 00:00', '1']])) }])).toThrow(
+      /at least two data rows/,
+    );
+    expect(() => loadMeterDataFiles([])).toThrow(/no CSV files/);
   });
 });

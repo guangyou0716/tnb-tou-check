@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // End-to-end check of the built CLI (dist/cli.js), run directly and through a symlink like an npm bin.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -45,6 +45,21 @@ for (const [flag, marker] of [['--md', '# TNB General vs ToU check'], ['--csv', 
     fail(`--shift-peak 20: got ${JSON.stringify(json.whatIf)}`);
   }
   console.log('smoke: ok --shift-peak 20 (factory A: stay -> what-if ToU RM82077.60, switch)');
+}
+
+{
+  const lines = readFileSync(fixture('mv-factory-b.csv'), 'utf8').trimEnd().split('\n');
+  const mid = Math.floor(lines.length / 2);
+  const dir = mkdtempSync(join(tmpdir(), 'tnb-smoke-split-'));
+  writeFileSync(join(dir, 'a.csv'), lines.slice(0, mid).join('\n') + '\n');
+  writeFileSync(join(dir, 'b.csv'), [lines[0], ...lines.slice(mid)].join('\n') + '\n');
+  const json = JSON.parse(
+    execFileSync(process.execPath, [cli, 'analyze', join(dir, 'b.csv'), join(dir, 'a.csv'), '--class', 'mv', '--json'], { encoding: 'utf8' }),
+  );
+  if (json.summary.generalRm !== '89580.00' || json.summary.touRm !== '82016.25') {
+    fail(`split files: unexpected summary ${JSON.stringify(json.summary)}`);
+  }
+  console.log('smoke: ok two split CSV files = one file');
 }
 
 const link = join(mkdtempSync(join(tmpdir(), 'tnb-smoke-')), 'tnb-tou-check');
