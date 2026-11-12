@@ -77,6 +77,7 @@ timestamp,kwh
 
 - Timestamps without an offset are Malaysian time; `Z` and offsets such as `+08:00` are accepted.
 - 15- or 30-minute intervals; other lengths, duplicate timestamps and off-grid timestamps are rejected.
+  Several files must share one interval length (a 15-minute file next to a 30-minute file is rejected).
 - Gaps are allowed. A month with under 95% of its intervals is reported but left out of the verdict.
 
 ## Example
