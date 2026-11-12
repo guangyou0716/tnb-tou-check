@@ -113,11 +113,51 @@ export function loadMeterDataFiles(sources: CsvSource[], options: LoadOptions = 
   if (sources.length === 1) {
     return buildMeterData(readRows(sources[0], options, 3), options);
   }
-  const readings = sources.flatMap((source) => readRows(source, options, 2));
+  const perFile = sources.map((source) => readRows(source, options, 2));
+  checkSameNativeInterval(sources, perFile);
+  const readings = perFile.flat();
   if (readings.length < 2) {
     throw new InputError('CSV files need at least two data rows in total.');
   }
   return buildMeterData(readings, options);
+}
+
+/** Smallest positive step between sorted timestamps, or undefined with fewer than two distinct ones. */
+function smallestStep(readings: Reading[]): number | undefined {
+  const ts = readings.map((r) => r.ts).sort((a, b) => a - b);
+  let step: number | undefined;
+  for (let i = 1; i < ts.length; i++) {
+    const diff = ts[i] - ts[i - 1];
+    if (diff > 0 && (step === undefined || diff < step)) {
+      step = diff;
+    }
+  }
+  return step;
+}
+
+/**
+ * Rejects a mix of 15-minute and 30-minute files. Without this, 30-minute rows inside a
+ * 15-minute series would be read as 15-minute intervals: coverage would look half empty and
+ * `--value kw` readings would count only half their energy. Files with one data row (no step)
+ * or with an unsupported step are left to the combined-series check.
+ */
+function checkSameNativeInterval(sources: CsvSource[], perFile: Reading[][]): void {
+  let first: { name: string; minutes: number } | undefined;
+  perFile.forEach((readings, i) => {
+    const step = smallestStep(readings);
+    if (step !== 15 && step !== 30) {
+      return;
+    }
+    const name = sources[i].name ?? `file ${i + 1}`;
+    if (first === undefined) {
+      first = { name, minutes: step };
+    } else if (first.minutes !== step) {
+      throw new InputError(
+        `files mix interval lengths: ${first.name} is ${first.minutes}-minute data but ${name} is ${step}-minute data; ` +
+          'give files with one interval length.',
+      );
+    }
+  });
 }
 
 function buildMeterData(readings: Reading[], options: LoadOptions): MeterData {

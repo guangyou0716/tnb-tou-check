@@ -132,6 +132,29 @@ describe('loadMeterDataFiles', () => {
     ).toThrow(/b\.csv: needs a header row and at least one data row/);
   });
 
+  it('rejects a mix of 15-minute and 30-minute files, naming both', () => {
+    const quarter = csvOf([['2025-09-01 00:00', '1'], ['2025-09-01 00:15', '1'], ['2025-09-01 00:30', '1']]);
+    const half = csvOf([['2025-09-02 00:00', '2'], ['2025-09-02 00:30', '2'], ['2025-09-02 01:00', '2']]);
+    const run = () =>
+      loadMeterDataFiles([
+        { name: 'aug.csv', rows: parseCsv(half) },
+        { name: 'sep.csv', rows: parseCsv(quarter) },
+      ]);
+    expect(run).toThrow(InputError);
+    expect(run).toThrow(/aug\.csv is 30-minute data but sep\.csv is 15-minute data/);
+    expect(() => loadMeterDataFiles([{ rows: parseCsv(quarter) }, { rows: parseCsv(half) }])).toThrow(/file 1 is 15-minute data but file 2 is 30-minute data/);
+  });
+
+  it('still combines same-length files and single-row files', () => {
+    const data = loadMeterDataFiles([
+      { name: 'a.csv', rows: parseCsv(csvOf([['2025-09-01 00:00', '1'], ['2025-09-01 00:15', '1']])) },
+      { name: 'b.csv', rows: parseCsv(csvOf([['2025-09-01 01:00', '1']])) },
+      { name: 'c.csv', rows: parseCsv(csvOf([['2025-09-02 00:00', '1'], ['2025-09-02 00:15', '1']])) },
+    ]);
+    expect(data.intervalMinutes).toBe(15);
+    expect(data.intervalCount).toBe(5);
+  });
+
   it('keeps the single-file rules for one source and rejects none', () => {
     expect(() => loadMeterDataFiles([{ rows: parseCsv(csvOf([['2025-09-01 00:00', '1']])) }])).toThrow(
       /at least two data rows/,
